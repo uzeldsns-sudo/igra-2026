@@ -3,36 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Платформер: Настоящий Человечек</title>
+    <title>Мега Платформер: Приключение Человечка</title>
     <style>
         body {
             margin: 0;
-            background: #1a1a2e;
+            background: #0f0c1b;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Arial, sans-serif;
             color: white;
             overflow: hidden;
             user-select: none;
             touch-action: none;
         }
-        canvas {
-            background: #16213e;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
-            border-radius: 10px;
-            max-width: 100%;
-            max-height: 60vh;
-        }
-        .info {
+        /* Панель показателей */
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            width: 90%;
+            max-width: 800px;
             margin-bottom: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-sizing: border-box;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             font-size: 18px;
-            text-shadow: 1px 1px 2px black;
-            text-align: center;
         }
-        /* Стили для мобильных кнопок */
+        .hud-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        canvas {
+            background: linear-gradient(to bottom, #111936, #1f1a3a);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.8);
+            border-radius: 15px;
+            max-width: 100%;
+            max-height: 55vh;
+            border: 2px solid #3d3475;
+        }
+        /* Кнопка магазина */
+        .shop-btn {
+            background: #ff9f43;
+            border: none;
+            padding: 5px 15px;
+            color: white;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        /* Мобильное управление */
         .controls {
             display: flex;
             justify-content: space-between;
@@ -44,127 +68,181 @@
         }
         .move-buttons {
             display: flex;
-            gap: 15px;
+            gap: 20px;
         }
         .btn {
-            width: 65px;
-            height: 65px;
-            background: rgba(255, 255, 255, 0.2);
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.08);
             border: 2px solid #00adb5;
             border-radius: 50%;
             color: white;
-            font-size: 28px;
+            font-size: 32px;
             font-weight: bold;
             display: flex;
             justify-content: center;
             align-items: center;
-            user-select: none;
             touch-action: none;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
         }
         .btn:active {
             background: #00adb5;
             transform: scale(0.9);
         }
-        /* Прячем кнопки на компьютерах */
+        .btn-jump {
+            border-color: #ff6b6b;
+        }
+        .btn-jump:active {
+            background: #ff6b6b;
+        }
         @media (pointer: fine) {
-            .controls {
-                display: none;
-            }
+            .controls { display: none; }
         }
     </style>
 </head>
 <body>
 
-<div class="info">Счёт: <span id="score">0</span></div>
+<div class="hud">
+    <div class="hud-item">❤️ Жизни: <span id="hp">3</span></div>
+    <div class="hud-item">💰 Золото: <span id="gold">0</span></div>
+    <div class="hud-item">🗺️ Уровень: <span id="level">1</span></div>
+    <button class="shop-btn" id="shopBtn">🛒 Магазин</button>
+</div>
+
 <canvas id="gameCanvas" width="800" height="400"></canvas>
 
-<!-- Мобильное управление -->
 <div class="controls">
     <div class="move-buttons">
         <div class="btn" id="btnLeft">←</div>
         <div class="btn" id="btnRight">→</div>
     </div>
-    <div class="btn" id="btnJump">↑</div>
+    <div class="btn btn-jump" id="btnJump">↑</div>
 </div>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-const scoreDisplay = document.getElementById("score");
 
-let score = 0;
+// Загрузка сохранений
+let gold = parseInt(localStorage.getItem("plat_gold")) || 0;
+let currentLevel = parseInt(localStorage.getItem("plat_level")) || 1;
+let maxHp = parseInt(localStorage.getItem("plat_max_hp")) || 3;
+let playerSpeed = parseFloat(localStorage.getItem("plat_speed")) || 5;
+
+let hp = maxHp;
 let animationFrame = 0;
+let gameState = "PLAY"; // PLAY, SHOP, GAME_OVER, WIN
+
+// Обновление текста на экране
+function updateHUD() {
+    document.getElementById("gold").textContent = gold;
+    document.getElementById("level").textContent = currentLevel;
+    document.getElementById("hp").textContent = hp;
+}
 
 const player = {
     x: 50,
     y: 300,
     width: 24,
     height: 40,
-    speed: 5,
     velX: 0,
     velY: 0,
     jumping: false,
     grounded: false,
-    direction: "right"
+    direction: "right",
+    invulnerable: 0 // Время неуязвимости после урона
 };
 
 const gravity = 0.6;
 const friction = 0.8;
 const keys = {};
+const mobileKeys = { left: false, right: false, jump: false };
 
-// Виртуальные кнопки для телефона
-const mobileKeys = {
-    left: false,
-    right: false,
-    jump: false
-};
+// Объекты на уровне
+let platforms = [];
+let coins = [];
+let enemies = [];
+let door = { x: 730, y: 100, width: 40, height: 60 };
 
-const platforms = [
-    { x: 0, y: 380, width: 800, height: 20 },
-    { x: 200, y: 280, width: 120, height: 15 },
-    { x: 450, y: 210, width: 150, height: 15 },
-    { x: 150, y: 140, width: 100, height: 15 },
-    { x: 650, y: 260, width: 100, height: 15 }
-];
+// Генератор карт в зависимости от уровня
+function generateLevel(lvl) {
+    player.x = 50;
+    player.y = 300;
+    player.velX = 0;
+    player.velY = 0;
+    hp = maxHp;
+    
+    // Базовый пол
+    platforms = [{ x: 0, y: 380, width: 800, height: 20 }];
+    
+    // Строим разные платформы в зависимости от номера уровня
+    if (lvl % 2 === 1) {
+        platforms.push({ x: 150, y: 290, width: 130, height: 15 });
+        platforms.push({ x: 380, y: 210, width: 140, height: 15 });
+        platforms.push({ x: 600, y: 140, width: 150, height: 15 });
+        door.x = 680; door.y = 80;
+    } else {
+        platforms.push({ x: 200, y: 300, width: 100, height: 15 });
+        platforms.push({ x: 100, y: 200, width: 100, height: 15 });
+        platforms.push({ x: 300, y: 130, width: 120, height: 15 });
+        platforms.push({ x: 550, y: 200, width: 200, height: 15 });
+        door.x = 650; door.y = 140;
+    }
 
-const coin = {
-    x: 520,
-    y: 160,
-    size: 10
-};
+    // Спавним монетки
+    coins = [];
+    for (let plat of platforms) {
+        if (plat.y < 380) {
+            coins.push({ x: plat.x + plat.width/2, y: plat.y - 25, size: 8, collected: false });
+        }
+    }
+    // Добавим супер-монетку высоко в воздухе
+    coins.push({ x: 400, y: 80, size: 8, collected: false });
 
-// Слушатели для клавиатуры
+    // Спавним врагов
+    enemies = [];
+    enemies.push({ x: 200, y: 360, startX: 150, endX: 350, speed: 1.5 + (lvl*0.2), width: 25, height: 20, dir: 1 });
+    if (lvl > 1) {
+        enemies.push({ x: 400, y: 190, startX: 390, endX: 500, speed: 2, width: 25, height: 20, dir: 1 });
+    }
+    
+    updateHUD();
+}
+
+// Слушатели управления
 window.addEventListener("keydown", (e) => { keys[e.code] = true; });
 window.addEventListener("keyup", (e) => { keys[e.code] = false; });
 
-// Функция для привязки тач-событий к кнопкам
-function setupMobileButton(elementId, keyProp) {
-    const btn = document.getElementById(elementId);
-    
-    btn.addEventListener("touchstart", (e) => {
-        e.preventDefault();
-        mobileKeys[keyProp] = true;
-    }, { passive: false });
-    
-    btn.addEventListener("touchend", (e) => {
-        e.preventDefault();
-        mobileKeys[keyProp] = false;
-    }, { passive: false });
+function setupMobileButton(id, key) {
+    const btn = document.getElementById(id);
+    btn.addEventListener("touchstart", (e) => { e.preventDefault(); mobileKeys[key] = true; }, { passive: false });
+    btn.addEventListener("touchend", (e) => { e.preventDefault(); mobileKeys[key] = false; }, { passive: false });
 }
-
-// Настраиваем телефонные кнопки
 setupMobileButton("btnLeft", "left");
 setupMobileButton("btnRight", "right");
 setupMobileButton("btnJump", "jump");
 
+// Кнопка Магазина
+document.getElementById("shopBtn").addEventListener("click", () => {
+    if (gameState === "PLAY") {
+        gameState = "SHOP";
+    } else if (gameState === "SHOP") {
+        gameState = "PLAY";
+    }
+});
+
 function update() {
-    // Движение (проверяем и клавиатуру, и экранные кнопки)
+    if (gameState !== "PLAY") return;
+
+    if (player.invulnerable > 0) player.invulnerable--;
+
+    // Движение
     if (keys["ArrowRight"] || keys["KeyD"] || mobileKeys.right) {
-        if (player.velX < player.speed) player.velX++;
+        if (player.velX < playerSpeed) player.velX++;
         player.direction = "right";
     }
     if (keys["ArrowLeft"] || keys["KeyA"] || mobileKeys.left) {
-        if (player.velX > -player.speed) player.velX--;
+        if (player.velX > -playerSpeed) player.velX--;
         player.direction = "left";
     }
     
@@ -179,12 +257,10 @@ function update() {
     player.velY += gravity;
     player.grounded = false;
 
+    // Столкновения с платформами
     for (let plat of platforms) {
-        if (player.x < plat.x + plat.width &&
-            player.x + player.width > plat.x &&
-            player.y < plat.y + plat.height &&
-            player.y + player.height > plat.y) {
-            
+        if (player.x < plat.x + plat.width && player.x + player.width > plat.x &&
+            player.y < plat.y + plat.height && player.y + player.height > plat.y) {
             if (player.velY > 0 && player.y + player.height - player.velY <= plat.y) {
                 player.grounded = true;
                 player.jumping = false;
@@ -197,111 +273,42 @@ function update() {
     player.x += player.velX;
     player.y += player.velY;
 
+    // Границы экрана
     if (player.x < 0) player.x = 0;
     if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
 
-    let distX = (player.x + player.width/2) - coin.x;
-    let distY = (player.y + player.height/2) - coin.y;
-    let distance = Math.sqrt(distX * distX + distY * distY);
+    // Движение и логика врагов
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        let enemy = enemies[i];
+        enemy.x += enemy.speed * enemy.dir;
+        if (enemy.x > enemy.endX || enemy.x < enemy.startX) {
+            enemy.dir *= -1;
+        }
 
-    if (distance < player.width/2 + coin.size) {
-        score++;
-        scoreDisplay.textContent = score;
-        coin.x = Math.random() * (canvas.width - 50) + 25;
-        coin.y = Math.random() * 250 + 50;
+        // Проверка касания с игроком
+        if (player.x < enemy.x + enemy.width && player.x + player.width > enemy.x &&
+            player.y < enemy.y + enemy.height && player.y + player.height > enemy.y) {
+            
+            // Прыгнули на врага сверху
+            if (player.velY > 0 && player.y + player.height - player.velY <= enemy.y + 10) {
+                enemies.splice(i, 1);
+                player.velY = -8; // Подскакиваем вверх
+                gold += 5;
+                updateHUD();
+            } else if (player.invulnerable === 0) {
+                // Враг укусил игрока
+                hp--;
+                player.invulnerable = 60; // 1 секунда мигания
+                player.velY = -6;
+                player.velX = player.x < enemy.x ? -8 : 8;
+                updateHUD();
+                if (hp <= 0) gameState = "GAME_OVER";
+            }
+        }
     }
 
-    if (Math.abs(player.velX) > 0.2 && player.grounded) {
-        animationFrame += 0.2;
-    } else {
-        animationFrame = 0;
-    }
-}
-
-function drawPlayer(ctx, p) {
-    const centerX = p.x + p.width / 2;
-    const headRadius = 7;
-    const headY = p.y + headRadius;
-    const bodyTopY = p.y + headRadius * 2;
-    const bodyBottomY = p.y + p.height - 12;
-    
-    ctx.lineWidth = 3;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "#eccc68";
-
-    ctx.beginPath();
-    ctx.arc(centerX, headY, headRadius, 0, Math.PI * 2);
-    ctx.fillStyle = "#eccc68";
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = "#000";
-    const eyeX = p.direction === "right" ? centerX + 3 : centerX - 5;
-    ctx.fillRect(eyeX, headY - 2, 2, 3);
-
-    ctx.beginPath();
-    ctx.moveTo(centerX, bodyTopY);
-    ctx.lineTo(centerX, bodyBottomY);
-    ctx.stroke();
-
-    const swing = Math.sin(animationFrame) * 10;
-
-    ctx.beginPath();
-    if (p.jumping) {
-        ctx.moveTo(centerX, bodyTopY + 4);
-        ctx.lineTo(centerX - 8, bodyTopY - 6);
-        ctx.moveTo(centerX, bodyTopY + 4);
-        ctx.lineTo(centerX + 8, bodyTopY - 6);
-    } else {
-        ctx.moveTo(centerX, bodyTopY + 4);
-        ctx.lineTo(centerX + swing, bodyTopY + 12);
-        ctx.moveTo(centerX, bodyTopY + 4);
-        ctx.lineTo(centerX - swing, bodyTopY + 12);
-    }
-    ctx.stroke();
-
-    ctx.beginPath();
-    if (p.jumping) {
-        ctx.moveTo(centerX, bodyBottomY);
-        ctx.lineTo(centerX - 5, bodyBottomY + 8);
-        ctx.moveTo(centerX, bodyBottomY);
-        ctx.lineTo(centerX + 5, bodyBottomY + 8);
-    } else {
-        ctx.moveTo(centerX, bodyBottomY);
-        ctx.lineTo(centerX + swing, p.y + p.height);
-        ctx.moveTo(centerX, bodyBottomY);
-        ctx.lineTo(centerX - swing, p.y + p.height);
-    }
-    ctx.stroke();
-}
-
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = "#00adb5";
-    for (let plat of platforms) {
-        ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
-    }
-
-    ctx.fillStyle = "#ffd32a";
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = "#ffd32a";
-    ctx.beginPath();
-    ctx.arc(coin.x, coin.y, coin.size, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    drawPlayer(ctx, player);
-}
-
-function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
-}
-
-gameLoop();
-</script>
-
-</body>
-</html>
+    // Сбор монет
+    for (let c of coins) {
+        if (!c.collected) {
+            let distX = (player.x + player.width/2) - c.x;
+            let distY = (player.y + player.height/2) - c.y;
