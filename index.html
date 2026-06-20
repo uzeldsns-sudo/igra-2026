@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Платформер: Настоящий Человечек</title>
+    <style>
+        body {
+            margin: 0;
+            background: #1a1a2e;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            color: white;
+            overflow: hidden;
+        }
+        canvas {
+            background: #16213e;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            border-radius: 10px;
+        }
+        .info {
+            margin-bottom: 15px;
+            font-size: 20px;
+            text-shadow: 1px 1px 2px black;
+        }
+    </style>
+</head>
+<body>
+
+<div class="info">Счёт: <span id="score">0</span> | Бег: Стрелки / WASD | Прыжок: Пробел / Вверх</div>
+<canvas id="gameCanvas" width="800" height="400"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const scoreDisplay = document.getElementById("score");
+
+let score = 0;
+let animationFrame = 0; // Для анимации бега
+
+// Настройки персонажа
+const player = {
+    x: 50,
+    y: 300,
+    width: 24,   // Чуть сузили под пропорции человека
+    height: 40,  // Сделали повыше
+    speed: 5,
+    velX: 0,
+    velY: 0,
+    jumping: false,
+    grounded: false,
+    direction: "right" // Куда смотрит: "left" или "right"
+};
+
+// Физика
+const gravity = 0.6;
+const friction = 0.8;
+const keys = {};
+
+// Платформы
+const platforms = [
+    { x: 0, y: 380, width: 800, height: 20 },
+    { x: 200, y: 280, width: 120, height: 15 },
+    { x: 450, y: 210, width: 150, height: 15 },
+    { x: 150, y: 140, width: 100, height: 15 },
+    { x: 650, y: 260, width: 100, height: 15 }
+];
+
+// Монетка
+const coin = {
+    x: 520,
+    y: 160,
+    size: 10
+};
+
+window.addEventListener("keydown", (e) => { keys[e.code] = true; });
+window.addEventListener("keyup", (e) => { keys[e.code] = false; });
+
+function update() {
+    // Движение и определение направления взгляда
+    if (keys["ArrowRight"] || keys["KeyD"]) {
+        if (player.velX < player.speed) player.velX++;
+        player.direction = "right";
+    }
+    if (keys["ArrowLeft"] || keys["KeyA"]) {
+        if (player.velX > -player.speed) player.velX--;
+        player.direction = "left";
+    }
+    
+    // ИСПРАВЛЕНО: Добавлены операторы || между клавишами прыжка
+    if ((keys["ArrowUp"] || keys["Space"] || keys["KeyW"]) && !player.jumping && player.grounded) {
+        player.jumping = true;
+        player.grounded = false;
+        player.velY = -12;
+    }
+
+    player.velX *= friction;
+    player.velY += gravity;
+    player.grounded = false;
+
+    // Проверка столкновений
+    for (let plat of platforms) {
+        if (player.x < plat.x + plat.width &&
+            player.x + player.width > plat.x &&
+            player.y < plat.y + plat.height &&
+            player.y + player.height > plat.y) {
+            
+            if (player.velY > 0 && player.y + player.height - player.velY <= plat.y) {
+                player.grounded = true;
+                player.jumping = false;
+                player.velY = 0;
+                player.y = plat.y - player.height;
+            }
+        }
+    }
+
+    player.x += player.velX;
+    player.y += player.velY;
+
+    if (player.x < 0) player.x = 0;
+    if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
+
+    // Сбор монетки
+    let distX = (player.x + player.width/2) - coin.x;
+    let distY = (player.y + player.height/2) - coin.y;
+    let distance = Math.sqrt(distX * distX + distY * distY);
+
+    if (distance < player.width/2 + coin.size) {
+        score++;
+        scoreDisplay.textContent = score;
+        coin.x = Math.random() * (canvas.width - 50) + 25;
+        coin.y = Math.random() * 250 + 50;
+    }
+
+    // Инкремент счетчика для анимации ног, если персонаж движется
+    if (Math.abs(player.velX) > 0.2 && player.grounded) {
+        animationFrame += 0.2;
+    } else {
+        animationFrame = 0;
+    }
+}
+
+// Функция прорисовки стилизованного человечка
+function drawPlayer(ctx, p) {
+    const centerX = p.x + p.width / 2;
+    const headRadius = 7;
+    const headY = p.y + headRadius;
+    const bodyTopY = p.y + headRadius * 2;
+    const bodyBottomY = p.y + p.height - 12;
+    
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#eccc68"; // Цвет кожи/одежды человечка
+
+    // 1. Голова
+    ctx.beginPath();
+    ctx.arc(centerX, headY, headRadius, 0, Math.PI * 2);
+    ctx.fillStyle = "#eccc68";
+    ctx.fill();
+    ctx.stroke();
+
+    // Глаз (смотрящий в сторону движения)
+    ctx.fillStyle = "#000";
+    const eyeX = p.direction === "right" ? centerX + 3 : centerX - 5;
+    ctx.fillRect(eyeX, headY - 2, 2, 3);
+
+    // 2. Позвоночник (Тело)
+    ctx.beginPath();
+    ctx.moveTo(centerX, bodyTopY);
+    ctx.lineTo(centerX, bodyBottomY);
+    ctx.stroke();
+
+    // Расчет угла взмаха рук и ног при беге (синусоида)
+    const swing = Math.sin(animationFrame) * 10;
+
+    // 3. Руки
+    ctx.beginPath();
+    if (p.jumping) {
+        // В прыжке руки вверх!
+        ctx.moveTo(centerX, bodyTopY + 4);
+        ctx.lineTo(centerX - 8, bodyTopY - 6);
+        ctx.moveTo(centerX, bodyTopY + 4);
+        ctx.lineTo(centerX + 8, bodyTopY - 6);
+    } else {
+        // При ходьбе руки машут в противофазе ног
+        ctx.moveTo(centerX, bodyTopY + 4);
+        ctx.lineTo(centerX + swing, bodyTopY + 12);
+        ctx.moveTo(centerX, bodyTopY + 4);
+        ctx.lineTo(centerX - swing, bodyTopY + 12);
+    }
+    ctx.stroke();
+
+    // 4. Ноги
+    ctx.beginPath();
+    if (p.jumping) {
+        // В полете ноги поджаты
+        ctx.moveTo(centerX, bodyBottomY);
+        ctx.lineTo(centerX - 5, bodyBottomY + 8);
+        ctx.moveTo(centerX, bodyBottomY);
+        ctx.lineTo(centerX + 5, bodyBottomY + 8);
+    } else {
+        // Шагающие ноги
+        ctx.moveTo(centerX, bodyBottomY);
+        ctx.lineTo(centerX + swing, p.y + p.height);
+        ctx.moveTo(centerX, bodyBottomY);
+        ctx.lineTo(centerX - swing, p.y + p.height);
+    }
+    ctx.stroke();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Рисуем платформы (неоновые)
+    ctx.fillStyle = "#00adb5";
+    for (let plat of platforms) {
+        ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+    }
+
+    // Рисуем красивую золотую монетку
+    ctx.fillStyle = "#ffd32a";
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#ffd32a";
+    ctx.beginPath();
+    ctx.arc(coin.x, coin.y, coin.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0; // Сбрасываем свечение для других объектов
+
+    // Рисуем человечка вместо куба
+    drawPlayer(ctx, player);
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+
+</body>
+</html>
