@@ -220,8 +220,10 @@ window.addEventListener("keyup", (e) => { keys[e.code] = false; });
 // Связывание мобильных экранных кнопок
 function setupMobileButton(id, key) {
     const btn = document.getElementById(id);
-    btn.addEventListener("touchstart", (e) => { e.preventDefault(); mobileKeys[key] = true; }, { passive: false });
-    btn.addEventListener("touchend", (e) => { e.preventDefault(); mobileKeys[key] = false; }, { passive: false });
+    if (btn) {
+        btn.addEventListener("touchstart", (e) => { e.preventDefault(); mobileKeys[key] = true; }, { passive: false });
+        btn.addEventListener("touchend", (e) => { e.preventDefault(); mobileKeys[key] = false; }, { passive: false });
+    }
 }
 setupMobileButton("btnLeft", "left");
 setupMobileButton("btnRight", "right");
@@ -306,4 +308,3 @@ function update() {
                 player.velY = -6;
                 player.velX = player.x < enemy.x ? -8 : 8;
                 updateHUD();
-                if (hp <= 0) gameState = "GAME_OVER";
