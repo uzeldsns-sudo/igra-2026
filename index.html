@@ -23,6 +23,7 @@
         .hud {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             width: 90%;
             max-width: 800px;
             margin-bottom: 10px;
@@ -50,11 +51,15 @@
         .shop-btn {
             background: #ff9f43;
             border: none;
-            padding: 5px 15px;
+            padding: 8px 15px;
             color: white;
             border-radius: 10px;
             cursor: pointer;
             font-weight: bold;
+            font-size: 16px;
+        }
+        .shop-btn:active {
+            transform: scale(0.95);
         }
         /* Мобильное управление */
         .controls {
@@ -84,6 +89,7 @@
             align-items: center;
             touch-action: none;
             box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            user-select: none;
         }
         .btn:active {
             background: #00adb5;
@@ -95,6 +101,7 @@
         .btn-jump:active {
             background: #ff6b6b;
         }
+        /* Скрываем кнопки на ПК с мышкой */
         @media (pointer: fine) {
             .controls { display: none; }
         }
@@ -123,7 +130,7 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// Загрузка сохранений
+// Загрузка сохранений из памяти браузера
 let gold = parseInt(localStorage.getItem("plat_gold")) || 0;
 let currentLevel = parseInt(localStorage.getItem("plat_level")) || 1;
 let maxHp = parseInt(localStorage.getItem("plat_max_hp")) || 3;
@@ -131,9 +138,8 @@ let playerSpeed = parseFloat(localStorage.getItem("plat_speed")) || 5;
 
 let hp = maxHp;
 let animationFrame = 0;
-let gameState = "PLAY"; // PLAY, SHOP, GAME_OVER, WIN
+let gameState = "PLAY"; // Возможные состояния: PLAY, SHOP, GAME_OVER
 
-// Обновление текста на экране
 function updateHUD() {
     document.getElementById("gold").textContent = gold;
     document.getElementById("level").textContent = currentLevel;
@@ -150,7 +156,7 @@ const player = {
     jumping: false,
     grounded: false,
     direction: "right",
-    invulnerable: 0 // Время неуязвимости после урона
+    invulnerable: 0 // Защита от урона на пару секунд
 };
 
 const gravity = 0.6;
@@ -158,13 +164,12 @@ const friction = 0.8;
 const keys = {};
 const mobileKeys = { left: false, right: false, jump: false };
 
-// Объекты на уровне
 let platforms = [];
 let coins = [];
 let enemies = [];
 let door = { x: 730, y: 100, width: 40, height: 60 };
 
-// Генератор карт в зависимости от уровня
+// Создание нового уровня
 function generateLevel(lvl) {
     player.x = 50;
     player.y = 300;
@@ -172,10 +177,10 @@ function generateLevel(lvl) {
     player.velY = 0;
     hp = maxHp;
     
-    // Базовый пол
+    // Начальный пол
     platforms = [{ x: 0, y: 380, width: 800, height: 20 }];
     
-    // Строим разные платформы в зависимости от номера уровня
+    // Меняем структуру карт по номерам уровней
     if (lvl % 2 === 1) {
         platforms.push({ x: 150, y: 290, width: 130, height: 15 });
         platforms.push({ x: 380, y: 210, width: 140, height: 15 });
@@ -189,30 +194,30 @@ function generateLevel(lvl) {
         door.x = 650; door.y = 140;
     }
 
-    // Спавним монетки
+    // Создаем монетки над платформами
     coins = [];
     for (let plat of platforms) {
         if (plat.y < 380) {
             coins.push({ x: plat.x + plat.width/2, y: plat.y - 25, size: 8, collected: false });
         }
     }
-    // Добавим супер-монетку высоко в воздухе
     coins.push({ x: 400, y: 80, size: 8, collected: false });
 
-    // Спавним врагов
+    // Создаем врагов-слизней
     enemies = [];
-    enemies.push({ x: 200, y: 360, startX: 150, endX: 350, speed: 1.5 + (lvl*0.2), width: 25, height: 20, dir: 1 });
+    enemies.push({ x: 200, y: 360, startX: 150, endX: 350, speed: 1.5 + (lvl * 0.2), width: 25, height: 20, dir: 1 });
     if (lvl > 1) {
-        enemies.push({ x: 400, y: 190, startX: 390, endX: 500, speed: 2, width: 25, height: 20, dir: 1 });
+        enemies.push({ x: 400, y: 190, startX: 390, endX: 530, speed: 2, width: 25, height: 20, dir: 1 });
     }
     
     updateHUD();
 }
 
-// Слушатели управления
+// Управление кнопками клавиатуры
 window.addEventListener("keydown", (e) => { keys[e.code] = true; });
 window.addEventListener("keyup", (e) => { keys[e.code] = false; });
 
+// Связывание мобильных экранных кнопок
 function setupMobileButton(id, key) {
     const btn = document.getElementById(id);
     btn.addEventListener("touchstart", (e) => { e.preventDefault(); mobileKeys[key] = true; }, { passive: false });
@@ -222,7 +227,7 @@ setupMobileButton("btnLeft", "left");
 setupMobileButton("btnRight", "right");
 setupMobileButton("btnJump", "jump");
 
-// Кнопка Магазина
+// Клик по кнопке Магазина вверху
 document.getElementById("shopBtn").addEventListener("click", () => {
     if (gameState === "PLAY") {
         gameState = "SHOP";
@@ -236,7 +241,7 @@ function update() {
 
     if (player.invulnerable > 0) player.invulnerable--;
 
-    // Движение
+    // Проверка движения влево/вправо
     if (keys["ArrowRight"] || keys["KeyD"] || mobileKeys.right) {
         if (player.velX < playerSpeed) player.velX++;
         player.direction = "right";
@@ -246,7 +251,7 @@ function update() {
         player.direction = "left";
     }
     
-    // Прыжок
+    // Проверка условий прыжка
     if ((keys["ArrowUp"] || keys["Space"] || keys["KeyW"] || mobileKeys.jump) && !player.jumping && player.grounded) {
         player.jumping = true;
         player.grounded = false;
@@ -257,7 +262,7 @@ function update() {
     player.velY += gravity;
     player.grounded = false;
 
-    // Столкновения с платформами
+    // Столкновения человека со всеми платформами
     for (let plat of platforms) {
         if (player.x < plat.x + plat.width && player.x + player.width > plat.x &&
             player.y < plat.y + plat.height && player.y + player.height > plat.y) {
@@ -273,11 +278,10 @@ function update() {
     player.x += player.velX;
     player.y += player.velY;
 
-    // Границы экрана
     if (player.x < 0) player.x = 0;
     if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
 
-    // Движение и логика врагов
+    // Логика поведения злых слизней
     for (let i = enemies.length - 1; i >= 0; i--) {
         let enemy = enemies[i];
         enemy.x += enemy.speed * enemy.dir;
@@ -285,30 +289,21 @@ function update() {
             enemy.dir *= -1;
         }
 
-        // Проверка касания с игроком
+        // Проверка удара игрока со слизнем
         if (player.x < enemy.x + enemy.width && player.x + player.width > enemy.x &&
             player.y < enemy.y + enemy.height && player.y + player.height > enemy.y) {
             
-            // Прыгнули на врага сверху
+            // Если напрыгнули сверху — слизень лопается
             if (player.velY > 0 && player.y + player.height - player.velY <= enemy.y + 10) {
                 enemies.splice(i, 1);
-                player.velY = -8; // Подскакиваем вверх
+                player.velY = -8; 
                 gold += 5;
                 updateHUD();
             } else if (player.invulnerable === 0) {
-                // Враг укусил игрока
+                // Если врезались боком — теряем сердечко
                 hp--;
-                player.invulnerable = 60; // 1 секунда мигания
+                player.invulnerable = 60; // 1 секунда неуязвимости
                 player.velY = -6;
                 player.velX = player.x < enemy.x ? -8 : 8;
                 updateHUD();
                 if (hp <= 0) gameState = "GAME_OVER";
-            }
-        }
-    }
-
-    // Сбор монет
-    for (let c of coins) {
-        if (!c.collected) {
-            let distX = (player.x + player.width/2) - c.x;
-            let distY = (player.y + player.height/2) - c.y;
